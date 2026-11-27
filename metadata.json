@@ -1,0 +1,6 @@
+{
+  "name": "C-SYNC HRIS",
+  "description": "Platform HRIS terpadu real-time untuk absensi selfie & geofence radius, manajemen cuti & kebijakan, pelacakan tugas & KPI, proses rekrutmen, dan notifikasi Gmail otomatis.",
+  "requestFramePermissions": ["camera", "geolocation"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

@@ -1,0 +1,311 @@
+{
+  "entities": {
+    "CompanySettings": {
+      "title": "CompanySettings",
+      "description": "Global office geofence, radius, working hours, and HR notification settings.",
+      "type": "object",
+      "properties": {
+        "companyName": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "officeName": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "officeLat": { "type": "number" },
+        "officeLng": { "type": "number" },
+        "radiusMeters": { "type": "number" },
+        "workStartTime": { "type": "string", "maxLength": 10 },
+        "workEndTime": { "type": "string", "maxLength": 10 },
+        "hrNotificationEmail": { "type": "string", "maxLength": 160 },
+        "updatedBy": { "type": "string", "maxLength": 128 },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["companyName", "officeName", "officeLat", "officeLng", "radiusMeters", "workStartTime", "workEndTime", "hrNotificationEmail", "updatedBy", "updatedAt"]
+    },
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "Authenticated user profile with RBAC role, department, and reporting line.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "pattern": "^[a-zA-Z0-9_\\-]+$", "maxLength": 128 },
+        "email": { "type": "string", "maxLength": 160 },
+        "displayName": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "photoURL": { "type": "string", "maxLength": 500 },
+        "role": { "type": "string", "enum": ["employee", "lead", "hr_admin", "super_admin"] },
+        "department": { "type": "string", "maxLength": 80 },
+        "jobTitle": { "type": "string", "maxLength": 80 },
+        "managerId": { "type": "string", "maxLength": 128 },
+        "managerName": { "type": "string", "maxLength": 120 },
+        "managerEmail": { "type": "string", "maxLength": 160 },
+        "inviteId": { "type": "string", "maxLength": 128 },
+        "status": { "type": "string", "enum": ["active", "inactive"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "email", "displayName", "role", "department", "jobTitle", "status", "createdAt", "updatedAt"]
+    },
+    "UserInvite": {
+      "title": "UserInvite",
+      "description": "Pre-assigned user role and manager mapping keyed by email.",
+      "type": "object",
+      "properties": {
+        "email": { "type": "string", "maxLength": 160 },
+        "displayName": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "role": { "type": "string", "enum": ["employee", "lead", "hr_admin", "super_admin"] },
+        "department": { "type": "string", "maxLength": 80 },
+        "jobTitle": { "type": "string", "maxLength": 80 },
+        "managerId": { "type": "string", "maxLength": 128 },
+        "managerName": { "type": "string", "maxLength": 120 },
+        "managerEmail": { "type": "string", "maxLength": 160 },
+        "createdBy": { "type": "string", "maxLength": 128 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["email", "displayName", "role", "department", "jobTitle", "createdBy", "createdAt", "updatedAt"]
+    },
+    "AttendanceRecord": {
+      "title": "AttendanceRecord",
+      "description": "Daily clock-in/clock-out record with GPS radius check, work mode, selfie reference, and 2-tier Lead+HR approval.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "pattern": "^[a-zA-Z0-9_\\-]+$", "maxLength": 128 },
+        "userName": { "type": "string", "maxLength": 120 },
+        "userEmail": { "type": "string", "maxLength": 160 },
+        "department": { "type": "string", "maxLength": 80 },
+        "managerId": { "type": "string", "maxLength": 128 },
+        "managerEmail": { "type": "string", "maxLength": 160 },
+        "date": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$", "maxLength": 10 },
+        "workMode": { "type": "string", "enum": ["WFO", "WFH", "CLIENT_VISIT", "SUPERVISI"] },
+        "clockInTime": { "type": "string", "format": "date-time" },
+        "clockInLat": { "type": "number" },
+        "clockInLng": { "type": "number" },
+        "clockInDistanceMeters": { "type": "number" },
+        "clockInOutsideRadius": { "type": "boolean" },
+        "clockInSelfieId": { "type": "string", "maxLength": 128 },
+        "clockOutTime": { "type": "string", "format": "date-time" },
+        "clockOutLat": { "type": "number" },
+        "clockOutLng": { "type": "number" },
+        "clockOutDistanceMeters": { "type": "number" },
+        "clockOutOutsideRadius": { "type": "boolean" },
+        "clockOutSelfieId": { "type": "string", "maxLength": 128 },
+        "needsApproval": { "type": "boolean" },
+        "notes": { "type": "string", "maxLength": 600 },
+        "leadApprovalStatus": { "type": "string", "enum": ["not_required", "pending", "approved", "rejected"] },
+        "leadApprovedBy": { "type": "string", "maxLength": 120 },
+        "leadNote": { "type": "string", "maxLength": 300 },
+        "hrApprovalStatus": { "type": "string", "enum": ["not_required", "pending", "approved", "rejected"] },
+        "hrApprovedBy": { "type": "string", "maxLength": 120 },
+        "hrNote": { "type": "string", "maxLength": 300 },
+        "overallStatus": { "type": "string", "enum": ["present", "pending_approval", "approved", "rejected"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "userName", "userEmail", "department", "date", "workMode", "clockInTime", "clockInLat", "clockInLng", "clockInDistanceMeters", "clockInOutsideRadius", "clockInSelfieId", "needsApproval", "notes", "leadApprovalStatus", "hrApprovalStatus", "overallStatus", "createdAt", "updatedAt"]
+    },
+    "AttendanceMedia": {
+      "title": "AttendanceMedia",
+      "description": "Compressed selfie JPEG data URL for attendance verification.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "pattern": "^[a-zA-Z0-9_\\-]+$", "maxLength": 128 },
+        "managerId": { "type": "string", "maxLength": 128 },
+        "attendanceId": { "type": "string", "maxLength": 128 },
+        "type": { "type": "string", "enum": ["clock_in", "clock_out"] },
+        "imageDataUrl": { "type": "string", "maxLength": 200000 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "attendanceId", "type", "imageDataUrl", "createdAt"]
+    },
+    "LeavePolicy": {
+      "title": "LeavePolicy",
+      "description": "Global or per-employee statutory and custom leave quota policy.",
+      "type": "object",
+      "properties": {
+        "scope": { "type": "string", "enum": ["global", "personal"] },
+        "targetUserId": { "type": "string", "maxLength": 128 },
+        "targetUserName": { "type": "string", "maxLength": 120 },
+        "annualQuota": { "type": "number" },
+        "sickQuota": { "type": "number" },
+        "maternityDays": { "type": "number" },
+        "miscarriageDays": { "type": "number" },
+        "menstrualDaysPerMonth": { "type": "number" },
+        "marriageDays": { "type": "number" },
+        "paternityDays": { "type": "number" },
+        "bereavementDays": { "type": "number" },
+        "religiousDays": { "type": "number" },
+        "requireMedicalNoteAfterDays": { "type": "number" },
+        "allowCarryOver": { "type": "boolean" },
+        "maxCarryOverDays": { "type": "number" },
+        "customNotes": { "type": "string", "maxLength": 500 },
+        "updatedBy": { "type": "string", "maxLength": 128 },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["scope", "annualQuota", "sickQuota", "maternityDays", "miscarriageDays", "menstrualDaysPerMonth", "marriageDays", "paternityDays", "bereavementDays", "religiousDays", "requireMedicalNoteAfterDays", "allowCarryOver", "maxCarryOverDays", "updatedBy", "updatedAt"]
+    },
+    "LeaveRequest": {
+      "title": "LeaveRequest",
+      "description": "Employee leave/sick request regulated by labor law with Lead and HR dual approval.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "pattern": "^[a-zA-Z0-9_\\-]+$", "maxLength": 128 },
+        "userName": { "type": "string", "maxLength": 120 },
+        "userEmail": { "type": "string", "maxLength": 160 },
+        "department": { "type": "string", "maxLength": 80 },
+        "managerId": { "type": "string", "maxLength": 128 },
+        "managerEmail": { "type": "string", "maxLength": 160 },
+        "leaveType": { "type": "string", "enum": ["sakit", "cuti_tahunan", "cuti_melahirkan", "cuti_keguguran", "cuti_haid", "cuti_menikah", "cuti_anak", "cuti_istri_melahirkan", "cuti_duka", "cuti_ibadah", "izin_khusus"] },
+        "leaveLabel": { "type": "string", "maxLength": 100 },
+        "startDate": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$", "maxLength": 10 },
+        "endDate": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$", "maxLength": 10 },
+        "totalDays": { "type": "number" },
+        "reason": { "type": "string", "minLength": 3, "maxLength": 600 },
+        "attachmentName": { "type": "string", "maxLength": 160 },
+        "attachmentDataUrl": { "type": "string", "maxLength": 450000 },
+        "leadApprovalStatus": { "type": "string", "enum": ["pending", "approved", "rejected"] },
+        "leadApprovedBy": { "type": "string", "maxLength": 120 },
+        "leadNote": { "type": "string", "maxLength": 300 },
+        "hrApprovalStatus": { "type": "string", "enum": ["pending", "approved", "rejected"] },
+        "hrApprovedBy": { "type": "string", "maxLength": 120 },
+        "hrNote": { "type": "string", "maxLength": 300 },
+        "overallStatus": { "type": "string", "enum": ["pending_lead", "pending_hr", "approved", "rejected"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "userName", "userEmail", "department", "leaveType", "leaveLabel", "startDate", "endDate", "totalDays", "reason", "leadApprovalStatus", "hrApprovalStatus", "overallStatus", "createdAt", "updatedAt"]
+    },
+    "TaskItem": {
+      "title": "TaskItem",
+      "description": "Team to-do item or goal assigned by Lead/Manager or Admin.",
+      "type": "object",
+      "properties": {
+        "assigneeId": { "type": "string", "pattern": "^[a-zA-Z0-9_\\-]+$", "maxLength": 128 },
+        "assigneeName": { "type": "string", "maxLength": 120 },
+        "assigneeEmail": { "type": "string", "maxLength": 160 },
+        "department": { "type": "string", "maxLength": 80 },
+        "assignedById": { "type": "string", "pattern": "^[a-zA-Z0-9_\\-]+$", "maxLength": 128 },
+        "assignedByName": { "type": "string", "maxLength": 120 },
+        "managerId": { "type": "string", "maxLength": 128 },
+        "managerEmail": { "type": "string", "maxLength": 160 },
+        "type": { "type": "string", "enum": ["todo", "goal"] },
+        "title": { "type": "string", "minLength": 2, "maxLength": 160 },
+        "description": { "type": "string", "maxLength": 800 },
+        "priority": { "type": "string", "enum": ["low", "medium", "high"] },
+        "dueDate": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$", "maxLength": 10 },
+        "targetMetric": { "type": "string", "maxLength": 160 },
+        "progressPercent": { "type": "number" },
+        "kpiWeight": { "type": "number" },
+        "status": { "type": "string", "enum": ["todo", "in_progress", "review", "completed"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["assigneeId", "assigneeName", "assigneeEmail", "department", "assignedById", "assignedByName", "type", "title", "priority", "dueDate", "progressPercent", "kpiWeight", "status", "createdAt", "updatedAt"]
+    },
+    "Candidate": {
+      "title": "Candidate",
+      "description": "Recruitment pipeline candidate with CV banking and multi-stage interview notes.",
+      "type": "object",
+      "properties": {
+        "fullName": { "type": "string", "minLength": 2, "maxLength": 120 },
+        "email": { "type": "string", "maxLength": 160 },
+        "phone": { "type": "string", "maxLength": 40 },
+        "position": { "type": "string", "minLength": 2, "maxLength": 120 },
+        "department": { "type": "string", "maxLength": 80 },
+        "source": { "type": "string", "maxLength": 80 },
+        "stage": { "type": "string", "enum": ["cv_screening", "hr_interview", "user_interview", "assessment", "ceo_interview", "offering", "hired", "talent_bank", "rejected"] },
+        "assessmentRequired": { "type": "boolean" },
+        "isBanked": { "type": "boolean" },
+        "cvFileName": { "type": "string", "maxLength": 180 },
+        "cvFileId": { "type": "string", "maxLength": 128 },
+        "screeningScore": { "type": "number" },
+        "hrNotes": { "type": "string", "maxLength": 800 },
+        "userNotes": { "type": "string", "maxLength": 800 },
+        "assessmentNotes": { "type": "string", "maxLength": 800 },
+        "ceoNotes": { "type": "string", "maxLength": 800 },
+        "offerSalary": { "type": "string", "maxLength": 100 },
+        "offerStatus": { "type": "string", "enum": ["draft", "sent", "negotiating", "accepted", "declined"] },
+        "expectedJoinDate": { "type": "string", "maxLength": 20 },
+        "convertedToEmployee": { "type": "boolean" },
+        "recruiterId": { "type": "string", "pattern": "^[a-zA-Z0-9_\\-]+$", "maxLength": 128 },
+        "recruiterName": { "type": "string", "maxLength": 120 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["fullName", "email", "position", "department", "stage", "assessmentRequired", "isBanked", "screeningScore", "recruiterId", "recruiterName", "createdAt", "updatedAt"]
+    },
+    "CandidateCv": {
+      "title": "CandidateCv",
+      "description": "Uploaded CV document stored separately for talent banking.",
+      "type": "object",
+      "properties": {
+        "candidateId": { "type": "string", "maxLength": 128 },
+        "fileName": { "type": "string", "maxLength": 180 },
+        "mimeType": { "type": "string", "maxLength": 100 },
+        "fileSizeBytes": { "type": "number" },
+        "dataUrl": { "type": "string", "maxLength": 800000 },
+        "uploadedBy": { "type": "string", "maxLength": 128 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["candidateId", "fileName", "mimeType", "fileSizeBytes", "dataUrl", "uploadedBy", "createdAt"]
+    },
+    "NotificationItem": {
+      "title": "NotificationItem",
+      "description": "Real-time in-app notification and Gmail dispatch status.",
+      "type": "object",
+      "properties": {
+        "recipientUserId": { "type": "string", "maxLength": 128 },
+        "recipientEmail": { "type": "string", "maxLength": 160 },
+        "title": { "type": "string", "maxLength": 160 },
+        "message": { "type": "string", "maxLength": 600 },
+        "category": { "type": "string", "enum": ["attendance", "leave", "task", "recruitment", "system"] },
+        "isRead": { "type": "boolean" },
+        "emailSent": { "type": "boolean" },
+        "senderId": { "type": "string", "pattern": "^[a-zA-Z0-9_\\-]+$", "maxLength": 128 },
+        "senderName": { "type": "string", "maxLength": 120 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["recipientEmail", "title", "message", "category", "isRead", "emailSent", "senderId", "senderName", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/settings/{settingId}": {
+      "schema": { "$ref": "#/entities/CompanySettings" },
+      "description": "Global company geofence and work hours configuration."
+    },
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/UserProfile" },
+      "description": "Employee, Lead, HR Admin, and Super Admin profiles."
+    },
+    "/user_invites/{inviteId}": {
+      "schema": { "$ref": "#/entities/UserInvite" },
+      "description": "Pre-assigned roles and reporting lines by email."
+    },
+    "/attendance/{attendanceId}": {
+      "schema": { "$ref": "#/entities/AttendanceRecord" },
+      "description": "Employee clock-in/clock-out attendance logs."
+    },
+    "/attendance_media/{mediaId}": {
+      "schema": { "$ref": "#/entities/AttendanceMedia" },
+      "description": "Attendance selfie captures."
+    },
+    "/leave_policies/{policyId}": {
+      "schema": { "$ref": "#/entities/LeavePolicy" },
+      "description": "Global and personal employee leave policies."
+    },
+    "/leave_requests/{leaveId}": {
+      "schema": { "$ref": "#/entities/LeaveRequest" },
+      "description": "Employee sick/leave submissions and approval status."
+    },
+    "/tasks/{taskId}": {
+      "schema": { "$ref": "#/entities/TaskItem" },
+      "description": "Employee to-do items and team goals."
+    },
+    "/candidates/{candidateId}": {
+      "schema": { "$ref": "#/entities/Candidate" },
+      "description": "Recruitment pipeline and CV bank records."
+    },
+    "/candidate_cvs/{cvId}": {
+      "schema": { "$ref": "#/entities/CandidateCv" },
+      "description": "Uploaded CV attachments."
+    },
+    "/notifications/{notificationId}": {
+      "schema": { "$ref": "#/entities/NotificationItem" },
+      "description": "Real-time user notifications."
+    }
+  }
+}

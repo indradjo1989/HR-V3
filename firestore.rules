@@ -1,0 +1,648 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Global Safety Net (Default Deny)
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- Primitive Helpers ---
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isVerified() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isBootstrappedSuperAdmin() {
+      return isVerified() && request.auth.token.email == 'collabsync.hub@gmail.com';
+    }
+
+    function userDocPath() {
+      return /databases/$(database)/documents/users/$(request.auth.uid);
+    }
+
+    function callerRole() {
+      return exists(userDocPath()) ? get(userDocPath()).data.role : 'none';
+    }
+
+    function isSuperAdmin() {
+      return isBootstrappedSuperAdmin() || (isVerified() && callerRole() == 'super_admin');
+    }
+
+    function isHRAdmin() {
+      return isVerified() && callerRole() == 'hr_admin';
+    }
+
+    function isHRorSuperAdmin() {
+      return isSuperAdmin() || isHRAdmin();
+    }
+
+    function isLead() {
+      return isVerified() && callerRole() == 'lead';
+    }
+
+    function isManagerOf(data) {
+      return data.managerId == request.auth.uid
+        || (('managerEmail' in data) && data.managerEmail != '' && data.managerEmail == request.auth.token.email);
+    }
+
+    function isValidTimestampOnCreate(data) {
+      return data.createdAt is timestamp && data.createdAt == request.time
+        && data.updatedAt is timestamp && data.updatedAt == request.time;
+    }
+
+    function isValidTimestampOnUpdate(data) {
+      return data.createdAt == existing().createdAt
+        && data.updatedAt is timestamp && data.updatedAt == request.time;
+    }
+
+    function matchesUserInvite(data) {
+      return ('inviteId' in data)
+        && isValidId(data.inviteId)
+        && exists(/databases/$(database)/documents/user_invites/$(data.inviteId))
+        && get(/databases/$(database)/documents/user_invites/$(data.inviteId)).data.email == request.auth.token.email
+        && data.role == get(/databases/$(database)/documents/user_invites/$(data.inviteId)).data.role;
+    }
+
+    // --- Validation Blueprints ---
+    function isValidCompanySettings(data) {
+      return data.keys().hasAll([
+        'companyName', 'officeName', 'officeLat', 'officeLng', 'radiusMeters',
+        'workStartTime', 'workEndTime', 'hrNotificationEmail', 'updatedBy', 'updatedAt'
+      ])
+      && data.keys().hasOnly([
+        'companyName', 'officeName', 'officeLat', 'officeLng', 'radiusMeters',
+        'workStartTime', 'workEndTime', 'hrNotificationEmail', 'updatedBy', 'updatedAt'
+      ])
+      && data.companyName is string && data.companyName.size() >= 1 && data.companyName.size() <= 120
+      && data.officeName is string && data.officeName.size() >= 1 && data.officeName.size() <= 120
+      && data.officeLat is number && data.officeLat >= -90 && data.officeLat <= 90
+      && data.officeLng is number && data.officeLng >= -180 && data.officeLng <= 180
+      && data.radiusMeters is number && data.radiusMeters >= 10 && data.radiusMeters <= 50000
+      && data.workStartTime is string && data.workStartTime.size() >= 4 && data.workStartTime.size() <= 10
+      && data.workEndTime is string && data.workEndTime.size() >= 4 && data.workEndTime.size() <= 10
+      && data.hrNotificationEmail is string && data.hrNotificationEmail.size() >= 3 && data.hrNotificationEmail.size() <= 160
+      && data.updatedBy is string && data.updatedBy.size() >= 1 && data.updatedBy.size() <= 128
+      && data.updatedAt is timestamp && data.updatedAt == request.time;
+    }
+
+    function isValidUserProfile(data) {
+      return data.keys().hasAll([
+        'uid', 'email', 'displayName', 'role', 'department', 'jobTitle', 'status', 'createdAt', 'updatedAt'
+      ])
+      && data.keys().hasOnly([
+        'uid', 'email', 'displayName', 'photoURL', 'role', 'department', 'jobTitle',
+        'managerId', 'managerName', 'managerEmail', 'inviteId', 'status', 'createdAt', 'updatedAt'
+      ])
+      && isValidId(data.uid)
+      && data.email is string && data.email.size() >= 3 && data.email.size() <= 160
+      && data.displayName is string && data.displayName.size() >= 1 && data.displayName.size() <= 120
+      && (!('photoURL' in data) || (data.photoURL is string && data.photoURL.size() <= 500))
+      && data.role in ['employee', 'lead', 'hr_admin', 'super_admin']
+      && data.department is string && data.department.size() >= 1 && data.department.size() <= 80
+      && data.jobTitle is string && data.jobTitle.size() >= 1 && data.jobTitle.size() <= 80
+      && (!('managerId' in data) || data.managerId == '' || isValidId(data.managerId))
+      && (!('managerName' in data) || (data.managerName is string && data.managerName.size() <= 120))
+      && (!('managerEmail' in data) || (data.managerEmail is string && data.managerEmail.size() <= 160))
+      && (!('inviteId' in data) || data.inviteId == '' || isValidId(data.inviteId))
+      && data.status in ['active', 'inactive']
+      && data.createdAt is timestamp
+      && data.updatedAt is timestamp;
+    }
+
+    function isValidUserInvite(data) {
+      return data.keys().hasAll([
+        'email', 'displayName', 'role', 'department', 'jobTitle', 'createdBy', 'createdAt', 'updatedAt'
+      ])
+      && data.keys().hasOnly([
+        'email', 'displayName', 'role', 'department', 'jobTitle',
+        'managerId', 'managerName', 'managerEmail', 'createdBy', 'createdAt', 'updatedAt'
+      ])
+      && data.email is string && data.email.size() >= 3 && data.email.size() <= 160
+      && data.displayName is string && data.displayName.size() >= 1 && data.displayName.size() <= 120
+      && data.role in ['employee', 'lead', 'hr_admin', 'super_admin']
+      && data.department is string && data.department.size() >= 1 && data.department.size() <= 80
+      && data.jobTitle is string && data.jobTitle.size() >= 1 && data.jobTitle.size() <= 80
+      && (!('managerId' in data) || data.managerId == '' || isValidId(data.managerId))
+      && (!('managerName' in data) || (data.managerName is string && data.managerName.size() <= 120))
+      && (!('managerEmail' in data) || (data.managerEmail is string && data.managerEmail.size() <= 160))
+      && isValidId(data.createdBy)
+      && data.createdAt is timestamp
+      && data.updatedAt is timestamp;
+    }
+
+    function isValidAttendance(data) {
+      return data.keys().hasAll([
+        'userId', 'userName', 'userEmail', 'department', 'date', 'workMode',
+        'clockInTime', 'clockInLat', 'clockInLng', 'clockInDistanceMeters',
+        'clockInOutsideRadius', 'clockInSelfieId', 'needsApproval', 'notes',
+        'leadApprovalStatus', 'hrApprovalStatus', 'overallStatus', 'createdAt', 'updatedAt'
+      ])
+      && data.keys().hasOnly([
+        'userId', 'userName', 'userEmail', 'department', 'managerId', 'managerEmail', 'date', 'workMode',
+        'clockInTime', 'clockInLat', 'clockInLng', 'clockInDistanceMeters',
+        'clockInOutsideRadius', 'clockInSelfieId',
+        'clockOutTime', 'clockOutLat', 'clockOutLng', 'clockOutDistanceMeters',
+        'clockOutOutsideRadius', 'clockOutSelfieId',
+        'needsApproval', 'notes',
+        'leadApprovalStatus', 'leadApprovedBy', 'leadNote', 'leadActionAt',
+        'hrApprovalStatus', 'hrApprovedBy', 'hrNote', 'hrActionAt',
+        'overallStatus', 'createdAt', 'updatedAt'
+      ])
+      && isValidId(data.userId)
+      && data.userName is string && data.userName.size() >= 1 && data.userName.size() <= 120
+      && data.userEmail is string && data.userEmail.size() >= 3 && data.userEmail.size() <= 160
+      && data.department is string && data.department.size() >= 1 && data.department.size() <= 80
+      && (!('managerId' in data) || data.managerId == '' || isValidId(data.managerId))
+      && (!('managerEmail' in data) || (data.managerEmail is string && data.managerEmail.size() <= 160))
+      && data.date is string && data.date.matches('^\\d{4}-\\d{2}-\\d{2}$')
+      && data.workMode in ['WFO', 'WFH', 'CLIENT_VISIT', 'SUPERVISI']
+      && data.clockInTime is timestamp
+      && data.clockInLat is number && data.clockInLng is number
+      && data.clockInDistanceMeters is number && data.clockInDistanceMeters >= 0
+      && data.clockInOutsideRadius is bool
+      && isValidId(data.clockInSelfieId)
+      && (!('clockOutTime' in data) || data.clockOutTime is timestamp)
+      && (!('clockOutLat' in data) || data.clockOutLat is number)
+      && (!('clockOutLng' in data) || data.clockOutLng is number)
+      && (!('clockOutDistanceMeters' in data) || (data.clockOutDistanceMeters is number && data.clockOutDistanceMeters >= 0))
+      && (!('clockOutOutsideRadius' in data) || data.clockOutOutsideRadius is bool)
+      && (!('clockOutSelfieId' in data) || isValidId(data.clockOutSelfieId))
+      && data.needsApproval is bool
+      && data.notes is string && data.notes.size() <= 600
+      && data.leadApprovalStatus in ['not_required', 'pending', 'approved', 'rejected']
+      && (!('leadApprovedBy' in data) || (data.leadApprovedBy is string && data.leadApprovedBy.size() <= 120))
+      && (!('leadNote' in data) || (data.leadNote is string && data.leadNote.size() <= 300))
+      && (!('leadActionAt' in data) || data.leadActionAt is timestamp)
+      && data.hrApprovalStatus in ['not_required', 'pending', 'approved', 'rejected']
+      && (!('hrApprovedBy' in data) || (data.hrApprovedBy is string && data.hrApprovedBy.size() <= 120))
+      && (!('hrNote' in data) || (data.hrNote is string && data.hrNote.size() <= 300))
+      && (!('hrActionAt' in data) || data.hrActionAt is timestamp)
+      && data.overallStatus in ['present', 'pending_approval', 'approved', 'rejected']
+      && data.createdAt is timestamp
+      && data.updatedAt is timestamp;
+    }
+
+    function isValidAttendanceMedia(data) {
+      return data.keys().hasAll(['userId', 'attendanceId', 'type', 'imageDataUrl', 'createdAt'])
+      && data.keys().hasOnly(['userId', 'managerId', 'attendanceId', 'type', 'imageDataUrl', 'createdAt'])
+      && isValidId(data.userId)
+      && (!('managerId' in data) || data.managerId == '' || isValidId(data.managerId))
+      && isValidId(data.attendanceId)
+      && data.type in ['clock_in', 'clock_out']
+      && data.imageDataUrl is string && data.imageDataUrl.size() >= 20 && data.imageDataUrl.size() <= 200000
+      && data.createdAt is timestamp && data.createdAt == request.time;
+    }
+
+    function isValidLeavePolicy(data) {
+      return data.keys().hasAll([
+        'scope', 'annualQuota', 'sickQuota', 'maternityDays', 'miscarriageDays',
+        'menstrualDaysPerMonth', 'marriageDays', 'paternityDays', 'bereavementDays',
+        'religiousDays', 'requireMedicalNoteAfterDays', 'allowCarryOver',
+        'maxCarryOverDays', 'updatedBy', 'updatedAt'
+      ])
+      && data.keys().hasOnly([
+        'scope', 'targetUserId', 'targetUserName', 'annualQuota', 'sickQuota',
+        'maternityDays', 'miscarriageDays', 'menstrualDaysPerMonth', 'marriageDays',
+        'paternityDays', 'bereavementDays', 'religiousDays', 'requireMedicalNoteAfterDays',
+        'allowCarryOver', 'maxCarryOverDays', 'customNotes', 'updatedBy', 'updatedAt'
+      ])
+      && data.scope in ['global', 'personal']
+      && (!('targetUserId' in data) || data.targetUserId == '' || isValidId(data.targetUserId))
+      && (!('targetUserName' in data) || (data.targetUserName is string && data.targetUserName.size() <= 120))
+      && data.annualQuota is number && data.annualQuota >= 0 && data.annualQuota <= 365
+      && data.sickQuota is number && data.sickQuota >= 0 && data.sickQuota <= 365
+      && data.maternityDays is number && data.maternityDays >= 0 && data.maternityDays <= 365
+      && data.miscarriageDays is number && data.miscarriageDays >= 0 && data.miscarriageDays <= 365
+      && data.menstrualDaysPerMonth is number && data.menstrualDaysPerMonth >= 0 && data.menstrualDaysPerMonth <= 31
+      && data.marriageDays is number && data.marriageDays >= 0 && data.marriageDays <= 60
+      && data.paternityDays is number && data.paternityDays >= 0 && data.paternityDays <= 60
+      && data.bereavementDays is number && data.bereavementDays >= 0 && data.bereavementDays <= 60
+      && data.religiousDays is number && data.religiousDays >= 0 && data.religiousDays <= 180
+      && data.requireMedicalNoteAfterDays is number && data.requireMedicalNoteAfterDays >= 0 && data.requireMedicalNoteAfterDays <= 30
+      && data.allowCarryOver is bool
+      && data.maxCarryOverDays is number && data.maxCarryOverDays >= 0 && data.maxCarryOverDays <= 60
+      && (!('customNotes' in data) || (data.customNotes is string && data.customNotes.size() <= 500))
+      && isValidId(data.updatedBy)
+      && data.updatedAt is timestamp && data.updatedAt == request.time;
+    }
+
+    function isValidLeaveRequest(data) {
+      return data.keys().hasAll([
+        'userId', 'userName', 'userEmail', 'department', 'leaveType', 'leaveLabel',
+        'startDate', 'endDate', 'totalDays', 'reason',
+        'leadApprovalStatus', 'hrApprovalStatus', 'overallStatus', 'createdAt', 'updatedAt'
+      ])
+      && data.keys().hasOnly([
+        'userId', 'userName', 'userEmail', 'department', 'managerId', 'managerEmail',
+        'leaveType', 'leaveLabel', 'startDate', 'endDate', 'totalDays', 'reason',
+        'attachmentName', 'attachmentDataUrl',
+        'leadApprovalStatus', 'leadApprovedBy', 'leadNote', 'leadActionAt',
+        'hrApprovalStatus', 'hrApprovedBy', 'hrNote', 'hrActionAt',
+        'overallStatus', 'createdAt', 'updatedAt'
+      ])
+      && isValidId(data.userId)
+      && data.userName is string && data.userName.size() >= 1 && data.userName.size() <= 120
+      && data.userEmail is string && data.userEmail.size() >= 3 && data.userEmail.size() <= 160
+      && data.department is string && data.department.size() >= 1 && data.department.size() <= 80
+      && (!('managerId' in data) || data.managerId == '' || isValidId(data.managerId))
+      && (!('managerEmail' in data) || (data.managerEmail is string && data.managerEmail.size() <= 160))
+      && data.leaveType in [
+        'sakit', 'cuti_tahunan', 'cuti_melahirkan', 'cuti_keguguran', 'cuti_haid',
+        'cuti_menikah', 'cuti_anak', 'cuti_istri_melahirkan', 'cuti_duka', 'cuti_ibadah', 'izin_khusus'
+      ]
+      && data.leaveLabel is string && data.leaveLabel.size() >= 1 && data.leaveLabel.size() <= 100
+      && data.startDate is string && data.startDate.matches('^\\d{4}-\\d{2}-\\d{2}$')
+      && data.endDate is string && data.endDate.matches('^\\d{4}-\\d{2}-\\d{2}$')
+      && data.totalDays is number && data.totalDays >= 1 && data.totalDays <= 365
+      && data.reason is string && data.reason.size() >= 3 && data.reason.size() <= 600
+      && (!('attachmentName' in data) || (data.attachmentName is string && data.attachmentName.size() <= 160))
+      && (!('attachmentDataUrl' in data) || (data.attachmentDataUrl is string && data.attachmentDataUrl.size() <= 450000))
+      && data.leadApprovalStatus in ['pending', 'approved', 'rejected']
+      && (!('leadApprovedBy' in data) || (data.leadApprovedBy is string && data.leadApprovedBy.size() <= 120))
+      && (!('leadNote' in data) || (data.leadNote is string && data.leadNote.size() <= 300))
+      && (!('leadActionAt' in data) || data.leadActionAt is timestamp)
+      && data.hrApprovalStatus in ['pending', 'approved', 'rejected']
+      && (!('hrApprovedBy' in data) || (data.hrApprovedBy is string && data.hrApprovedBy.size() <= 120))
+      && (!('hrNote' in data) || (data.hrNote is string && data.hrNote.size() <= 300))
+      && (!('hrActionAt' in data) || data.hrActionAt is timestamp)
+      && data.overallStatus in ['pending_lead', 'pending_hr', 'approved', 'rejected']
+      && data.createdAt is timestamp
+      && data.updatedAt is timestamp;
+    }
+
+    function isValidTask(data) {
+      return data.keys().hasAll([
+        'assigneeId', 'assigneeName', 'assigneeEmail', 'department',
+        'assignedById', 'assignedByName', 'type', 'title', 'priority',
+        'dueDate', 'progressPercent', 'kpiWeight', 'status', 'createdAt', 'updatedAt'
+      ])
+      && data.keys().hasOnly([
+        'assigneeId', 'assigneeName', 'assigneeEmail', 'department',
+        'assignedById', 'assignedByName', 'managerId', 'managerEmail', 'type', 'title', 'description',
+        'priority', 'dueDate', 'targetMetric', 'progressPercent', 'kpiWeight', 'status',
+        'createdAt', 'updatedAt'
+      ])
+      && isValidId(data.assigneeId)
+      && data.assigneeName is string && data.assigneeName.size() >= 1 && data.assigneeName.size() <= 120
+      && data.assigneeEmail is string && data.assigneeEmail.size() >= 3 && data.assigneeEmail.size() <= 160
+      && data.department is string && data.department.size() >= 1 && data.department.size() <= 80
+      && isValidId(data.assignedById)
+      && data.assignedByName is string && data.assignedByName.size() >= 1 && data.assignedByName.size() <= 120
+      && (!('managerId' in data) || data.managerId == '' || isValidId(data.managerId))
+      && (!('managerEmail' in data) || (data.managerEmail is string && data.managerEmail.size() <= 160))
+      && data.type in ['todo', 'goal']
+      && data.title is string && data.title.size() >= 2 && data.title.size() <= 160
+      && (!('description' in data) || (data.description is string && data.description.size() <= 800))
+      && data.priority in ['low', 'medium', 'high']
+      && data.dueDate is string && data.dueDate.matches('^\\d{4}-\\d{2}-\\d{2}$')
+      && (!('targetMetric' in data) || (data.targetMetric is string && data.targetMetric.size() <= 160))
+      && data.progressPercent is number && data.progressPercent >= 0 && data.progressPercent <= 100
+      && data.kpiWeight is number && data.kpiWeight >= 0 && data.kpiWeight <= 100
+      && data.status in ['todo', 'in_progress', 'review', 'completed']
+      && data.createdAt is timestamp
+      && data.updatedAt is timestamp;
+    }
+
+    function isValidCandidate(data) {
+      return data.keys().hasAll([
+        'fullName', 'email', 'position', 'department', 'stage',
+        'assessmentRequired', 'isBanked', 'screeningScore',
+        'recruiterId', 'recruiterName', 'createdAt', 'updatedAt'
+      ])
+      && data.keys().hasOnly([
+        'fullName', 'email', 'phone', 'position', 'department', 'source', 'stage',
+        'assessmentRequired', 'isBanked', 'cvFileName', 'cvFileId', 'screeningScore',
+        'hrNotes', 'userNotes', 'assessmentNotes', 'ceoNotes', 'offerSalary',
+        'offerStatus', 'expectedJoinDate', 'convertedToEmployee',
+        'recruiterId', 'recruiterName', 'createdAt', 'updatedAt'
+      ])
+      && data.fullName is string && data.fullName.size() >= 2 && data.fullName.size() <= 120
+      && data.email is string && data.email.size() >= 3 && data.email.size() <= 160
+      && (!('phone' in data) || (data.phone is string && data.phone.size() <= 40))
+      && data.position is string && data.position.size() >= 2 && data.position.size() <= 120
+      && data.department is string && data.department.size() >= 1 && data.department.size() <= 80
+      && (!('source' in data) || (data.source is string && data.source.size() <= 80))
+      && data.stage in [
+        'cv_screening', 'hr_interview', 'user_interview', 'assessment',
+        'ceo_interview', 'offering', 'hired', 'talent_bank', 'rejected'
+      ]
+      && data.assessmentRequired is bool
+      && data.isBanked is bool
+      && (!('cvFileName' in data) || (data.cvFileName is string && data.cvFileName.size() <= 180))
+      && (!('cvFileId' in data) || isValidId(data.cvFileId))
+      && data.screeningScore is number && data.screeningScore >= 0 && data.screeningScore <= 100
+      && (!('hrNotes' in data) || (data.hrNotes is string && data.hrNotes.size() <= 800))
+      && (!('userNotes' in data) || (data.userNotes is string && data.userNotes.size() <= 800))
+      && (!('assessmentNotes' in data) || (data.assessmentNotes is string && data.assessmentNotes.size() <= 800))
+      && (!('ceoNotes' in data) || (data.ceoNotes is string && data.ceoNotes.size() <= 800))
+      && (!('offerSalary' in data) || (data.offerSalary is string && data.offerSalary.size() <= 100))
+      && (!('offerStatus' in data) || data.offerStatus in ['draft', 'sent', 'negotiating', 'accepted', 'declined'])
+      && (!('expectedJoinDate' in data) || (data.expectedJoinDate is string && data.expectedJoinDate.size() <= 20))
+      && (!('convertedToEmployee' in data) || data.convertedToEmployee is bool)
+      && isValidId(data.recruiterId)
+      && data.recruiterName is string && data.recruiterName.size() >= 1 && data.recruiterName.size() <= 120
+      && data.createdAt is timestamp
+      && data.updatedAt is timestamp;
+    }
+
+    function isValidCandidateCv(data) {
+      return data.keys().hasAll(['candidateId', 'fileName', 'mimeType', 'fileSizeBytes', 'dataUrl', 'uploadedBy', 'createdAt'])
+      && data.keys().hasOnly(['candidateId', 'fileName', 'mimeType', 'fileSizeBytes', 'dataUrl', 'uploadedBy', 'createdAt'])
+      && isValidId(data.candidateId)
+      && data.fileName is string && data.fileName.size() >= 1 && data.fileName.size() <= 180
+      && data.mimeType is string && data.mimeType.size() >= 3 && data.mimeType.size() <= 100
+      && data.fileSizeBytes is number && data.fileSizeBytes > 0 && data.fileSizeBytes <= 700000
+      && data.dataUrl is string && data.dataUrl.size() >= 10 && data.dataUrl.size() <= 800000
+      && isValidId(data.uploadedBy)
+      && data.createdAt is timestamp && data.createdAt == request.time;
+    }
+
+    function isValidNotification(data) {
+      return data.keys().hasAll([
+        'recipientEmail', 'title', 'message', 'category', 'isRead',
+        'emailSent', 'senderId', 'senderName', 'createdAt'
+      ])
+      && data.keys().hasOnly([
+        'recipientUserId', 'recipientEmail', 'title', 'message', 'category',
+        'isRead', 'emailSent', 'senderId', 'senderName', 'createdAt'
+      ])
+      && (!('recipientUserId' in data) || data.recipientUserId == '' || isValidId(data.recipientUserId))
+      && data.recipientEmail is string && data.recipientEmail.size() >= 3 && data.recipientEmail.size() <= 160
+      && data.title is string && data.title.size() >= 1 && data.title.size() <= 160
+      && data.message is string && data.message.size() >= 1 && data.message.size() <= 600
+      && data.category in ['attendance', 'leave', 'task', 'recruitment', 'system']
+      && data.isRead is bool
+      && data.emailSent is bool
+      && isValidId(data.senderId)
+      && data.senderName is string && data.senderName.size() >= 1 && data.senderName.size() <= 120
+      && data.createdAt is timestamp && data.createdAt == request.time;
+    }
+
+    // --- Collection Rules ---
+    match /test/{docId} {
+      allow get: if isVerified() && isValidId(docId);
+    }
+
+    match /settings/{settingId} {
+      allow get: if isVerified() && isValidId(settingId);
+      allow list: if isVerified();
+      allow create, update: if isSuperAdmin() && isValidId(settingId) && isValidCompanySettings(incoming());
+      allow delete: if false;
+    }
+
+    match /users/{userId} {
+      allow get: if isVerified() && isValidId(userId) && (
+        userId == request.auth.uid || isManagerOf(existing()) || isHRorSuperAdmin()
+      );
+      allow list: if isVerified() && (
+        existing().uid == request.auth.uid
+        || existing().email == request.auth.token.email
+        || isManagerOf(existing())
+        || isHRorSuperAdmin()
+      );
+      allow create: if isVerified() && isValidId(userId) && isValidUserProfile(incoming()) && isValidTimestampOnCreate(incoming()) && (
+        isSuperAdmin() || (
+          userId == request.auth.uid
+          && incoming().uid == request.auth.uid
+          && incoming().email == request.auth.token.email
+          && (
+            (isBootstrappedSuperAdmin() && incoming().role == 'super_admin')
+            || matchesUserInvite(incoming())
+            || incoming().role == 'employee'
+          )
+        )
+      );
+      allow update: if isVerified() && isValidId(userId) && isValidUserProfile(incoming()) && isValidTimestampOnUpdate(incoming()) && (
+        isSuperAdmin() || (
+          userId == request.auth.uid
+          && incoming().uid == existing().uid
+          && incoming().email == existing().email
+          && incoming().role == existing().role
+          && incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'photoURL', 'updatedAt'])
+        )
+      );
+      allow delete: if isVerified() && isValidId(userId) && (
+        isSuperAdmin() || (userId.matches('^emp_.*') && existing().email == request.auth.token.email)
+      );
+    }
+
+    match /user_invites/{inviteId} {
+      allow get: if isVerified() && isValidId(inviteId) && (
+        isHRorSuperAdmin() || existing().email == request.auth.token.email
+      );
+      allow list: if isVerified() && (
+        isHRorSuperAdmin() || existing().email == request.auth.token.email
+      );
+      allow create: if isHRorSuperAdmin() && isValidId(inviteId) && isValidUserInvite(incoming()) && isValidTimestampOnCreate(incoming());
+      allow update: if isHRorSuperAdmin() && isValidId(inviteId) && isValidUserInvite(incoming()) && isValidTimestampOnUpdate(incoming());
+      allow delete: if isSuperAdmin() && isValidId(inviteId);
+    }
+
+    match /attendance/{attendanceId} {
+      allow get: if isVerified() && isValidId(attendanceId) && (
+        existing().userId == request.auth.uid || isManagerOf(existing()) || isHRorSuperAdmin()
+      );
+      allow list: if isVerified() && (
+        existing().userId == request.auth.uid || isManagerOf(existing()) || isHRorSuperAdmin()
+      );
+      allow create: if isVerified() && isValidId(attendanceId) && isValidAttendance(incoming()) && isValidTimestampOnCreate(incoming())
+        && incoming().userId == request.auth.uid
+        && (
+          (!incoming().needsApproval && incoming().leadApprovalStatus == 'not_required' && incoming().hrApprovalStatus == 'not_required' && incoming().overallStatus == 'present')
+          || (incoming().needsApproval && incoming().leadApprovalStatus == 'pending' && incoming().hrApprovalStatus == 'pending' && incoming().overallStatus == 'pending_approval')
+        );
+      allow update: if isVerified() && isValidId(attendanceId) && isValidAttendance(incoming()) && isValidTimestampOnUpdate(incoming())
+        && incoming().userId == existing().userId
+        && (
+          isSuperAdmin()
+          || (
+            existing().userId == request.auth.uid
+            && incoming().diff(existing()).affectedKeys().hasOnly([
+              'clockOutTime', 'clockOutLat', 'clockOutLng', 'clockOutDistanceMeters',
+              'clockOutOutsideRadius', 'clockOutSelfieId', 'needsApproval', 'notes',
+              'leadApprovalStatus', 'hrApprovalStatus', 'overallStatus', 'updatedAt'
+            ])
+          )
+          || (
+            isManagerOf(existing())
+            && existing().needsApproval == true
+            && existing().overallStatus != 'rejected'
+            && incoming().diff(existing()).affectedKeys().hasOnly([
+              'leadApprovalStatus', 'leadApprovedBy', 'leadNote', 'leadActionAt', 'overallStatus', 'updatedAt'
+            ])
+          )
+          || (
+            isHRAdmin()
+            && existing().needsApproval == true
+            && incoming().diff(existing()).affectedKeys().hasOnly([
+              'hrApprovalStatus', 'hrApprovedBy', 'hrNote', 'hrActionAt', 'overallStatus', 'updatedAt'
+            ])
+          )
+        );
+      allow delete: if isSuperAdmin() && isValidId(attendanceId);
+    }
+
+    match /attendance_media/{mediaId} {
+      allow get: if isVerified() && isValidId(mediaId) && (
+        existing().userId == request.auth.uid
+        || existing().managerId == request.auth.uid
+        || isHRorSuperAdmin()
+        || (
+          exists(/databases/$(database)/documents/attendance/$(existing().attendanceId))
+          && isManagerOf(get(/databases/$(database)/documents/attendance/$(existing().attendanceId)).data)
+        )
+      );
+      allow list: if isVerified() && (
+        existing().userId == request.auth.uid || existing().managerId == request.auth.uid || isHRorSuperAdmin()
+      );
+      allow create: if isVerified() && isValidId(mediaId) && isValidAttendanceMedia(incoming()) && incoming().userId == request.auth.uid;
+      allow update: if false;
+      allow delete: if isSuperAdmin() && isValidId(mediaId);
+    }
+
+    match /leave_policies/{policyId} {
+      allow get: if isVerified() && isValidId(policyId) && (
+        policyId == 'global' || existing().targetUserId == request.auth.uid || isHRorSuperAdmin()
+      );
+      allow list: if isVerified() && (
+        existing().scope == 'global' || existing().targetUserId == request.auth.uid || isHRorSuperAdmin()
+      );
+      allow create, update: if isHRorSuperAdmin() && isValidId(policyId) && isValidLeavePolicy(incoming());
+      allow delete: if isHRorSuperAdmin() && isValidId(policyId) && policyId != 'global';
+    }
+
+    match /leave_requests/{leaveId} {
+      allow get: if isVerified() && isValidId(leaveId) && (
+        existing().userId == request.auth.uid || isManagerOf(existing()) || isHRorSuperAdmin()
+      );
+      allow list: if isVerified() && (
+        existing().userId == request.auth.uid || isManagerOf(existing()) || isHRorSuperAdmin()
+      );
+      allow create: if isVerified() && isValidId(leaveId) && isValidLeaveRequest(incoming()) && isValidTimestampOnCreate(incoming())
+        && incoming().userId == request.auth.uid
+        && incoming().leadApprovalStatus == 'pending'
+        && incoming().hrApprovalStatus == 'pending'
+        && incoming().overallStatus == 'pending_lead';
+      allow update: if isVerified() && isValidId(leaveId) && isValidLeaveRequest(incoming()) && isValidTimestampOnUpdate(incoming())
+        && incoming().userId == existing().userId
+        && (
+          isSuperAdmin()
+          || (
+            isManagerOf(existing())
+            && existing().overallStatus in ['pending_lead', 'pending_hr']
+            && incoming().diff(existing()).affectedKeys().hasOnly([
+              'leadApprovalStatus', 'leadApprovedBy', 'leadNote', 'leadActionAt', 'overallStatus', 'updatedAt'
+            ])
+          )
+          || (
+            isHRAdmin()
+            && existing().overallStatus in ['pending_lead', 'pending_hr']
+            && incoming().diff(existing()).affectedKeys().hasOnly([
+              'hrApprovalStatus', 'hrApprovedBy', 'hrNote', 'hrActionAt', 'overallStatus', 'updatedAt'
+            ])
+          )
+        );
+      allow delete: if isVerified() && isValidId(leaveId) && (
+        isSuperAdmin() || (existing().userId == request.auth.uid && existing().overallStatus == 'pending_lead')
+      );
+    }
+
+    match /tasks/{taskId} {
+      allow get: if isVerified() && isValidId(taskId) && (
+        existing().assigneeId == request.auth.uid
+        || existing().assigneeEmail == request.auth.token.email
+        || isManagerOf(existing())
+        || existing().assignedById == request.auth.uid
+        || isHRorSuperAdmin()
+      );
+      allow list: if isVerified() && (
+        existing().assigneeId == request.auth.uid
+        || existing().assigneeEmail == request.auth.token.email
+        || isManagerOf(existing())
+        || existing().assignedById == request.auth.uid
+        || isHRorSuperAdmin()
+      );
+      allow create: if isVerified() && isValidId(taskId) && isValidTask(incoming()) && isValidTimestampOnCreate(incoming())
+        && incoming().assignedById == request.auth.uid
+        && (
+          isHRorSuperAdmin()
+          || (isLead() && (isManagerOf(incoming()) || incoming().assigneeId == request.auth.uid))
+          || (incoming().assigneeId == request.auth.uid && incoming().type == 'todo')
+        );
+      allow update: if isVerified() && isValidId(taskId) && isValidTask(incoming()) && isValidTimestampOnUpdate(incoming())
+        && incoming().assignedById == existing().assignedById
+        && (
+          isSuperAdmin()
+          || (
+            (isManagerOf(existing()) || existing().assignedById == request.auth.uid)
+            && incoming().diff(existing()).affectedKeys().hasOnly([
+              'title', 'description', 'priority', 'dueDate', 'targetMetric', 'progressPercent', 'kpiWeight', 'status', 'updatedAt'
+            ])
+          )
+          || (
+            (existing().assigneeId == request.auth.uid || existing().assigneeEmail == request.auth.token.email)
+            && incoming().diff(existing()).affectedKeys().hasOnly([
+              'progressPercent', 'status', 'updatedAt'
+            ])
+          )
+        );
+      allow delete: if isVerified() && isValidId(taskId) && (
+        isSuperAdmin() || existing().assignedById == request.auth.uid || isManagerOf(existing())
+      );
+    }
+
+    match /candidates/{candidateId} {
+      allow get: if isHRorSuperAdmin() && isValidId(candidateId);
+      allow list: if isHRorSuperAdmin();
+      allow create: if isHRorSuperAdmin() && isValidId(candidateId) && isValidCandidate(incoming()) && isValidTimestampOnCreate(incoming())
+        && incoming().recruiterId == request.auth.uid;
+      allow update: if isHRorSuperAdmin() && isValidId(candidateId) && isValidCandidate(incoming()) && isValidTimestampOnUpdate(incoming())
+        && incoming().recruiterId == existing().recruiterId;
+      allow delete: if isHRorSuperAdmin() && isValidId(candidateId);
+    }
+
+    match /candidate_cvs/{cvId} {
+      allow get: if isHRorSuperAdmin() && isValidId(cvId);
+      allow list: if isHRorSuperAdmin();
+      allow create: if isHRorSuperAdmin() && isValidId(cvId) && isValidCandidateCv(incoming())
+        && incoming().uploadedBy == request.auth.uid;
+      allow update: if false;
+      allow delete: if isHRorSuperAdmin() && isValidId(cvId);
+    }
+
+    match /notifications/{notificationId} {
+      allow get: if isVerified() && isValidId(notificationId) && (
+        existing().recipientUserId == request.auth.uid
+        || existing().recipientEmail == request.auth.token.email
+        || isSuperAdmin()
+      );
+      allow list: if isVerified() && (
+        existing().recipientUserId == request.auth.uid
+        || existing().recipientEmail == request.auth.token.email
+        || isSuperAdmin()
+      );
+      allow create: if isVerified() && isValidId(notificationId) && isValidNotification(incoming())
+        && incoming().senderId == request.auth.uid;
+      allow update: if isVerified() && isValidId(notificationId)
+        && (existing().recipientUserId == request.auth.uid || existing().recipientEmail == request.auth.token.email)
+        && incoming().diff(existing()).affectedKeys().hasOnly(['isRead'])
+        && incoming().isRead is bool;
+      allow delete: if isSuperAdmin() && isValidId(notificationId);
+    }
+  }
+}
